@@ -2,6 +2,8 @@
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "EndlessLoop"
 #define UART_IO uart0                // Console
 #define BAUD_RATE 115200
 #define UART_IO_TX_PIN 0
@@ -14,37 +16,43 @@
 
 #define LED_PIN 25
 
-bool data_expected = false;
 
 // RX interrupt handler:
 void on_uart_rx() {
     while (uart_is_readable(UART_IO)) {
         uint8_t ch = uart_getc(UART_IO);
         printf("%c", ch);
+
+        // send it to the other pi
+        uint8_t uart_data[] = {0x01, ch};
+        uart_write_blocking(UART_INTRA, uart_data, 2);
     }
 }
 
 void on_uart_intra_rx() {
 
-    char buffer[256];
+    int command;
+    int length;
+    uint8_t buffer[256];
     uint8_t index = 0;
 
     while (uart_is_readable(UART_INTRA)) {
-        buffer[index++] = uart_getc(UART_INTRA);
-    }
-    
-    printf("Received %d bytes \n\r", index);
-    if (data_expected) {
-        buffer[index++] = '\r'; // just for test
-        buffer[index++] = '\n'; // just for test
-        uart_write_blocking(UART_IO, buffer, index);
-        data_expected = false;
-    }
+        command = uart_getc(UART_INTRA);
 
-    if (index > 0 && buffer[0] == 0) {
-        printf("Received 0x00, sending confirmation\n\r");
-        uart_putc_raw(UART_INTRA, 0xFF);
-        data_expected = true;
+
+        if (command == 0) {
+            length = uart_getc(UART_INTRA);
+
+            while (index < length) {
+                buffer[index++] = uart_getc(UART_INTRA);
+            }
+
+            printf("Command: 0x00, length: %02x \r\n", length);
+            buffer[index++] = '\r';
+            buffer[index++] = '\n';
+        }
+
+        uart_write_blocking(UART_IO, buffer, index);
     }
 }
 
@@ -91,3 +99,5 @@ int main() {
         //
     }
 }
+
+#pragma clang diagnostic pop
