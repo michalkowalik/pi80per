@@ -2,6 +2,8 @@
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
 
+#include "floppy/floppy.h"
+
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
 #define UART_IO uart0                // Console
@@ -50,9 +52,39 @@ void on_uart_intra_rx() {
             printf("Command: 0x00, length: %02x \r\n", length);
             buffer[index++] = '\r';
             buffer[index++] = '\n';
+            uart_write_blocking(UART_IO, buffer, index);
+        } else if (command == 2) {
+            // set active Drive
+            uint8_t drive = uart_getc(UART_INTRA);
+            printf("Command: 0x02, drive: %02x \r\n", drive);
+            active_drive = drive;
+        } else if (command == 3) {
+            // set active sector on active drive
+            uint8_t sector = uart_getc(UART_INTRA);
+            printf("Command: 0x03, sector: %02x \r\n", sector);
+            floppy_drives[active_drive].sector = sector;
+        } else if (command == 4){
+            // set active track
+            uint8_t track = uart_getc(UART_INTRA);
+            printf("Command: 0x04, track: %02x \r\n", track);
+            floppy_drives[active_drive].track = track;
+        } else if (command == 6) {
+            // write data to active drive
+            length = uart_getc(UART_INTRA);
+            printf("Command: 0x06, length: %02x \r\n", length);
+            while (index < length) {
+                buffer[index++] = uart_getc(UART_INTRA);
+            }
+            floppy_write_sector(buffer);
+        } else if (command == 7) {
+            // read sector from active drive
+            length = uart_getc(UART_INTRA);
+            printf("Command: 0x07, length: %02x \r\n", length);
+            floppy_read_sector();
+
         }
 
-        uart_write_blocking(UART_IO, buffer, index);
+
     }
 }
 
@@ -83,14 +115,16 @@ int main() {
     // for now -> for now it has no TX data!
     uart_set_irq_enables(UART_INTRA, true, false);
 
-
     sleep_ms(1000);
     printf("\r\nUARTs enabled\r\n");
+
+    // init floppies
+    floppy_init();
+
 
     while (true) {
         gpio_put(LED_PIN, 1);
         sleep_ms(250);
-
 
 
         gpio_put(LED_PIN, 0);

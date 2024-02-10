@@ -10,10 +10,10 @@ add_subdirectory(./no-OS-FatFs/src)
 
 ## project config
 
-add_executable(
-        pi80per
-        main.c
-        hw_config.c)
+add_executable(pi80per main.c
+        hw_config.c
+        floppy/floppy.c
+        floppy/floppy.h)
 
 # pull in common dependencies
 target_link_libraries(
