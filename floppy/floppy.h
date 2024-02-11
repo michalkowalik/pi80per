@@ -27,12 +27,12 @@ typedef struct {
 } floppy_t;
 
 // we want 4 floppy drives
-extern floppy_t floppy_drives[4];
-extern uint8_t active_drive;
+// extern floppy_t floppy_drives[4];
+// extern uint8_t active_drive;
 
-
+void process_floppy_command(int command, uint8_t data);
 void floppy_init();
-void floppy_write_sector(uint8_t *data);
-void floppy_read_sector();
+static void floppy_write_sector(uint8_t *data);
+static void floppy_read_sector();
 
 #endif //PI80PER_FLOPPY_H

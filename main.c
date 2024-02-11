@@ -50,7 +50,7 @@ int main() {
     // for now -> for now it has no TX data!
     uart_set_irq_enables(UART_INTRA, true, false);
 
-    sleep_ms(1000);
+    sleep_ms(2000);
     printf("\r\nUARTs enabled\r\n");
 
     // init floppies
