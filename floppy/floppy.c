@@ -6,6 +6,8 @@
 
 #include "pico/stdlib.h"
 #include "floppy.h"
+#include "../intra_uart.h"
+
 #include "f_util.h"
 #include "ff.h"
 #include "rtc.h"
@@ -78,7 +80,8 @@ void floppy_write_sector(uint8_t *data) {
         return;
     }
 
-
+    // send confirmation back to host
+    send_confirmation(0x06, 0x00);
     floppy_drives[active_drive].status = FLOPPY_OK;
 }
 
@@ -98,7 +101,9 @@ void floppy_read_sector() {
         return;
     }
 
-    // send the data back to the host
+    f_sync(&floppy_drives[active_drive].file);
 
+    // send the data back to the host
+    send_data(0x07, buffer, 0x80);
     floppy_drives[active_drive].status = FLOPPY_OK;
 }

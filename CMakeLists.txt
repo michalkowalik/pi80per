@@ -13,7 +13,10 @@ add_subdirectory(./no-OS-FatFs/src)
 add_executable(pi80per main.c
         hw_config.c
         floppy/floppy.c
-        floppy/floppy.h)
+        floppy/floppy.h
+        intra_uart.h
+        intra_uart.c
+        config.h)
 
 # pull in common dependencies
 target_link_libraries(
