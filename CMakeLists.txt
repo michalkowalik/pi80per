@@ -25,6 +25,17 @@ target_link_libraries(
         no-OS-FatFS-SD-SDIO-SPI-RPi-Pico)
 pico_add_extra_outputs(pi80per)
 
+# This program is useless without standard standard input and output.
+add_compile_definitions(
+        USE_PRINTF
+        USE_DBG_PRINTF
+)
+
+set_property(TARGET pi80per APPEND_STRING PROPERTY LINK_FLAGS
+        "-Wl,--print-memory-usage"
+)
+
+
 # enable usb output, disable uart output
 pico_enable_stdio_usb(pi80per 1)
 pico_enable_stdio_uart(pi80per 0)
