@@ -210,7 +210,7 @@ static void floppy_write_sector(uint8_t *data) {
     // write data to the active drive at position determined by track and sector
     floppy_drives[active_drive].status = FLOPPY_BUSY;
     fs_res = f_lseek(&fil,
-            (floppy_drives[active_drive].track - 1) * 0x1000 + floppy_drives[active_drive].sector * 0x80);
+            floppy_drives[active_drive].track * 0x1000 + (floppy_drives[active_drive].sector - 1) * 0x80);
     if (fs_res != FR_OK) {
         debug_printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
