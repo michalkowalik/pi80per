@@ -16,7 +16,9 @@ add_executable(pi80per main.c
         floppy/floppy.h
         intra_uart.h
         intra_uart.c
-        config.h)
+        config.h
+        debug.h
+        debug.c)
 
 # pull in common dependencies
 target_link_libraries(
