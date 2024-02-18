@@ -5,6 +5,7 @@
 #include "hardware/uart.h"
 #include "floppy/floppy.h"
 #include "intra_uart.h"
+#include "debug.h"
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
@@ -36,9 +37,7 @@ int main() {
     irq_set_exclusive_handler(UART0_IRQ, on_uart_rx);
     irq_set_enabled(UART0_IRQ, true);
 
-    // for now -> for now it has no TX data!
     uart_set_irq_enables(UART_IO, true, false);
-
 
     uart_init(UART_INTRA, INTRA_BAUD_RATE);
     gpio_set_function(UART_INTRA_TX_PIN, GPIO_FUNC_UART);
@@ -58,14 +57,7 @@ int main() {
 
 
     while (true) {
-        gpio_put(LED_PIN, 1);
-        sleep_ms(250);
-
-
-        gpio_put(LED_PIN, 0);
-        sleep_ms(250);
-
-        //
+        check_floppy_queue();
     }
 }
 

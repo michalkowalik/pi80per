@@ -16,7 +16,9 @@ add_executable(pi80per main.c
         floppy/floppy.h
         intra_uart.h
         intra_uart.c
-        config.h)
+        config.h
+        debug.h
+        debug.c)
 
 # pull in common dependencies
 target_link_libraries(
@@ -24,6 +26,17 @@ target_link_libraries(
         pico_stdlib
         no-OS-FatFS-SD-SDIO-SPI-RPi-Pico)
 pico_add_extra_outputs(pi80per)
+
+# This program is useless without standard standard input and output.
+add_compile_definitions(
+        USE_PRINTF
+        USE_DBG_PRINTF
+)
+
+set_property(TARGET pi80per APPEND_STRING PROPERTY LINK_FLAGS
+        "-Wl,--print-memory-usage"
+)
+
 
 # enable usb output, disable uart output
 pico_enable_stdio_usb(pi80per 1)

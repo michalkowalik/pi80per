@@ -5,9 +5,9 @@
 #include "pico/stdlib.h"
 #include "config.h"
 #include "floppy/floppy.h"
+#include "debug.h"
 
 void on_uart_intra_rx() {
-
     int command;
     int length;
     uint8_t buffer[256];
@@ -16,7 +16,7 @@ void on_uart_intra_rx() {
     while (uart_is_readable(UART_INTRA)) {
         command = uart_getc(UART_INTRA);
 
-
+        // TODO: send correct header
         if (command == 0) {
             length = uart_getc(UART_INTRA);
 
@@ -24,7 +24,7 @@ void on_uart_intra_rx() {
                 buffer[index++] = uart_getc(UART_INTRA);
             }
 
-            printf("Command: 0x00, length: %02x \r\n", length);
+            debug_printf("Command: 0x00, length: %02x \r\n", length);
             buffer[index++] = '\r';
             buffer[index++] = '\n';
             uart_write_blocking(UART_IO, buffer, index);

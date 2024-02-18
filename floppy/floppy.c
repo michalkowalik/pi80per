@@ -3,6 +3,7 @@
 //
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
 
 #include "pico/stdlib.h"
 #include "floppy.h"
@@ -10,15 +11,42 @@
 
 #include "f_util.h"
 #include "ff.h"
-#include "rtc.h"
+#include "sd_card.h"
 #include "../config.h"
+#include "../debug.h"
+#include "hw_config.h"
+
+#define QUEUE_SIZE 32
+
+int floppy_read_queue[QUEUE_SIZE];
+uint floppy_queue_head = 0;
+uint floppy_queue_tail = 0;
 
 static FATFS fs;
 FRESULT fs_res;
-static floppy_t floppy_drives[4];
+struct floppy_t floppy_drives[4];
 static uint8_t active_drive = 0;
+char const *sd_card_prefix;
+// char buffer[512];
+uint const sector_length = 0x80;
 
-char buffer[512];
+void enqueue_floppy_request(uint8_t command) {
+    if ((floppy_queue_tail + 1) % QUEUE_SIZE == floppy_queue_head) {
+        printf("Floppy queue full, dropping read_request:\r\n");
+        return;
+    }
+    floppy_read_queue[floppy_queue_tail] = command;
+    floppy_queue_tail = (floppy_queue_tail + 1) % QUEUE_SIZE;
+}
+
+int dequeue_floppy_request() {
+    if (floppy_queue_head == floppy_queue_tail) {
+        return -1;
+    }
+    int data = floppy_read_queue[floppy_queue_head];
+    floppy_queue_head = (floppy_queue_head + 1) % QUEUE_SIZE;
+    return data;
+}
 
 void process_floppy_command(int command, uint8_t data) {
     uint8_t uart_buffer[256];
@@ -30,19 +58,31 @@ void process_floppy_command(int command, uint8_t data) {
             // set active Drive
             printf("Command: 0x02, drive: %02x \r\n", data);
             active_drive = data;
+            send_confirmation(0x02, 0x00);
             break;
         case 0x03:
             // set active sector on active drive
             printf("Command: 0x03, sector: %02x \r\n", data);
-            floppy_drives[active_drive].sector = data;
+            if (data > 0 && data < 32) {
+                floppy_drives[active_drive].sector = data;
+                send_confirmation(0x03, 0x00);
+            } else {
+                send_confirmation(0x03, 0x01);
+            }
             break;
         case 0x04:
             // set active track
             printf("Command: 0x04, track: %02x \r\n", data);
-            floppy_drives[active_drive].track = data;
+            if (data >= 0 && data <= 31) {
+                floppy_drives[active_drive].track = data;
+                send_confirmation(0x04, 0);
+            } else {
+                send_confirmation(0x04, 1);
+            }
             break;
         case 0x06:
             // write data to active drive
+            enqueue_floppy_request(0x06);
             length = data;
             printf("Command: 0x06, length: %02x \r\n", length);
             while (index < length) {
@@ -52,135 +92,196 @@ void process_floppy_command(int command, uint8_t data) {
             break;
         case 0x07:
             // read sector from active drive
-            length = data;
-            printf("Command: 0x07, length: %02x \r\n", length);
-            floppy_read_sector();
+            enqueue_floppy_request(0x07);
             break;
         default:
             printf("Unknown command: 0x%02x\r\n", command);
     }
 }
 
+void check_floppy_queue() {
+    uint index = 0;
+    uint8_t *buffer = malloc(0x80);
+    if (floppy_queue_head != floppy_queue_tail) {
+        int command = dequeue_floppy_request();
+        debug_printf("Command: %02x, length: 0x80 \r\n", command);
+
+        // write sector
+        if (command == 0x07) {
+            floppy_read_sector();
+        }
+        // read sector
+        else if (command == 0x06) {
+            while (index < sector_length) {
+                buffer[index++] = uart_getc(UART_INTRA);
+            }
+            floppy_write_sector(buffer);
+        } else {
+            debug_printf("Unknown command: %02x\r\n", command);
+        }
+    }
+    free(buffer);
+}
 
 void mount_fs() {
-    fs_res = f_mount(&fs, "", 1);
-    if (fs_res != FR_OK)
-        panic("f_mount error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+    sd_card_t *sd_card = sd_get_by_num(0);
+    assert(sd_card);
+    sd_card_prefix = sd_get_drive_prefix(sd_card);
 
+    if (!sd_card->state.mounted) {
+        debug_printf("SD card not mounted\n");
+
+        fs_res = f_mount(&fs, sd_card_prefix, 1); // mount the file system with re-mounting enabled
+        if (fs_res != FR_OK) {
+            debug_printf("f_mount error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+            return;
+        } else {
+            debug_printf("f_mount OK\n");
+            sd_card->state.mounted = true;
+        }
+    } else {
+        debug_printf("SD card mounted\n");
+    }
 }
 
 void init_drive(int drive) {
     char drive_name[8];
     snprintf(drive_name, 8, "DISK%d", drive);
+    printf("\n %s: ", drive_name);
 
     DIR dir;
     fs_res = f_opendir(&dir, drive_name);
-    if (fs_res != FR_OK) panic("No media in %s\n", drive_name);
-
-    FILINFO file_info;
-    while(f_readdir(&dir, &file_info) == FR_OK && file_info.fname[0]) {
-        printf("%s\n", file_info.fname);
-        if (strstr(file_info.fname, ".img")) {
-            printf("Mounting %s as floppy drive\n", file_info.fname);
-            char filename[32];
-            snprintf(filename, 32, "%s/%s", drive_name, file_info.fname);
-            fs_res = f_open(&floppy_drives[drive].file, filename, FA_OPEN_EXISTING | FA_WRITE | FA_READ);
-            if (fs_res != FR_OK)
-                panic("f_open error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
-            floppy_drives[drive].track = 0;
-            floppy_drives[drive].sector = 1;
-            floppy_drives[drive].status = FLOPPY_OK;
-
-            // do some light reading
-            printf("Reading first sector from drive %d..\n", drive);
-            fs_res = f_lseek(&floppy_drives[drive].file, 0);
-            if (fs_res != FR_OK) {
-                printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
-            }
-            fs_res = f_read(&floppy_drives[drive].file, buffer, 128, NULL);
-            if (fs_res != FR_OK) {
-                printf("f_read error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
-            }
-
-        } else {
-            printf("Ignoring %s\n", file_info.fname);
-            floppy_drives[drive].status = FLOPPY_NO_MEDIA;
-        }
+    if (fs_res != FR_OK) {
+        printf("No media in %s\n", drive_name);
+        return;
     }
 
+    FILINFO file_info;
+    while (f_readdir(&dir, &file_info) == FR_OK && file_info.fname[0]) {
+        if (strstr(file_info.fname, ".img")) {
+            printf("Mounting %s as floppy drive %d ", file_info.fname, drive);
+            char filename[32];
+            snprintf(filename, 32, "0:/%s/%s", drive_name, file_info.fname);
+            floppy_drives[drive].track = 0;
+            floppy_drives[drive].sector = 1;
+            strncpy(floppy_drives[drive].filename, filename, sizeof filename);
+            floppy_drives[drive].status = FLOPPY_OK;
+            break;
+        }
+    }
+    fs_res = f_closedir(&dir);
+    if (fs_res != FR_OK)
+        panic("f_closedir error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
 }
 
 void floppy_init() {
+    sd_init_driver();
     mount_fs();
 
-    for (int i = 0; i<4; i++) {
+    for (int i = 0; i < 4; i++) {
         init_drive(i);
     }
-
-    // do some light reading
-    fs_res = f_lseek(&floppy_drives[0].file, 0);
-    if (fs_res != FR_OK) {
-        printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
-    }
-    fs_res = f_read(&floppy_drives[0].file, buffer, 128, NULL);
-    if (fs_res != FR_OK) {
-        printf("f_read error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
-    }
+    printf("\n--\n");
 }
 
 static void floppy_write_sector(uint8_t *data) {
+    gpio_put(LED_PIN, 1);
+    FIL fil;
+
+    mount_fs();
+
+    debug_printf("opening file: %s\n", floppy_drives[active_drive].filename);
+    fs_res = f_open(&fil, floppy_drives[active_drive].filename, FA_OPEN_EXISTING | FA_WRITE);
+    if (fs_res != FR_OK) {
+        debug_printf("f_open error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+        floppy_drives[active_drive].status = FLOPPY_ERROR;
+        return;
+    }
     if (floppy_drives[active_drive].status != FLOPPY_OK) {
         return;
     }
+
     // write data to the active drive at position determined by track and sector
     floppy_drives[active_drive].status = FLOPPY_BUSY;
-
-    f_lseek(&floppy_drives[active_drive].file,
-            (floppy_drives[active_drive].track - 1)* 0x1000 + floppy_drives[active_drive].sector * 0x80);
+    fs_res = f_lseek(&floppy_drives[active_drive].file,
+            (floppy_drives[active_drive].track - 1) * 0x1000 + floppy_drives[active_drive].sector * 0x80);
+    if (fs_res != FR_OK) {
+        debug_printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+        floppy_drives[active_drive].status = FLOPPY_ERROR;
+        return;
+    }
 
     uint bytes_written;
     fs_res = f_write(&floppy_drives[active_drive].file, data, 0x80, &bytes_written);
     if (fs_res != FR_OK) {
+        debug_printf("f_write error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
         return;
     }
     if (bytes_written != 0x80) {
+        debug_printf("f_write error: wrote %d bytes, expected 128\n", bytes_written);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
         return;
     }
+    f_sync(&fil);
 
     // send confirmation back to host
     send_confirmation(0x06, 0x00);
     floppy_drives[active_drive].status = FLOPPY_OK;
+    f_close(&fil);
+    gpio_put(LED_PIN, 0);
 }
 
 static void floppy_read_sector() {
-    printf("Reading sector..\n");
+    gpio_put(LED_PIN, 1);
+    FIL fil;
+
+    mount_fs();
+
+    debug_printf("opening file: %s\n", floppy_drives[active_drive].filename);
+    fs_res = f_open(&fil, floppy_drives[active_drive].filename, FA_OPEN_EXISTING | FA_READ);
+    if (fs_res != FR_OK) {
+        debug_printf("f_open error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+        floppy_drives[active_drive].status = FLOPPY_ERROR;
+        return;
+    }
     // read sector from active drive
     if (floppy_drives[active_drive].status != FLOPPY_OK) {
-        printf("Floppy not ready\n");
+        debug_printf("Floppy %d not ready\n", active_drive);
         return;
     }
     floppy_drives[active_drive].status = FLOPPY_BUSY;
-    printf("Reading sector %02x from track %02x\n", floppy_drives[active_drive].sector, floppy_drives[active_drive].track);
-    fs_res = f_lseek(&floppy_drives[active_drive].file,
+    debug_printf("Reading sector %02x from track %02x\n", floppy_drives[active_drive].sector,
+                 floppy_drives[active_drive].track);
+    fs_res = f_lseek(&fil,
                      floppy_drives[active_drive].track * 0x1000 + (floppy_drives[active_drive].sector - 1) * 0x80);
     if (fs_res != FR_OK) {
-        printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+        debug_printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
         return;
     }
 
-    fs_res = f_read(&floppy_drives[active_drive].file, buffer, 0x80, NULL);
+    uint8_t *file_buffer = malloc(0x80);
+
+    uint bytes_read;
+    fs_res = f_read(&fil, file_buffer, 0x80, &bytes_read);
     if (fs_res != FR_OK) {
-        printf("f_read error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
+        debug_printf("f_read error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
         return;
     }
 
-    f_sync(&floppy_drives[active_drive].file);
+    if (bytes_read != 0x80) {
+        debug_printf("f_read error: read %d bytes, expected 128\n", bytes_read);
+        floppy_drives[active_drive].status = FLOPPY_ERROR;
+        return;
+    }
+    f_sync(&fil);
 
     // send the data back to the host
-    send_data(0x07, buffer, 0x80);
+    send_data(0x07, file_buffer, 0x80);
     floppy_drives[active_drive].status = FLOPPY_OK;
+    free(file_buffer);
+    f_close(&fil);
+    gpio_put(LED_PIN, 0);
 }
