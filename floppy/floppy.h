@@ -32,6 +32,7 @@ struct floppy_t {
 // extern uint8_t active_drive;
 
 void process_floppy_command(int command, uint8_t data);
+void process_floppy_write(const uint8_t *data);
 void check_floppy_queue();
 void floppy_init();
 static void floppy_write_sector(uint8_t *data);

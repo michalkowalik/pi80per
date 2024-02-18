@@ -27,8 +27,8 @@ FRESULT fs_res;
 struct floppy_t floppy_drives[4];
 static uint8_t active_drive = 0;
 char const *sd_card_prefix;
-// char buffer[512];
 uint const sector_length = 0x80;
+uint8_t data_buffer[256];
 
 void enqueue_floppy_request(uint8_t command) {
     if ((floppy_queue_tail + 1) % QUEUE_SIZE == floppy_queue_head) {
@@ -46,6 +46,13 @@ int dequeue_floppy_request() {
     int data = floppy_read_queue[floppy_queue_head];
     floppy_queue_head = (floppy_queue_head + 1) % QUEUE_SIZE;
     return data;
+}
+
+void process_floppy_write(const uint8_t *data) {
+    for (int i = 0; i < sector_length; i++) {
+        data_buffer[i] = data[i];
+    }
+    enqueue_floppy_request(0x06);
 }
 
 void process_floppy_command(int command, uint8_t data) {
@@ -80,16 +87,10 @@ void process_floppy_command(int command, uint8_t data) {
                 send_confirmation(0x04, 1);
             }
             break;
-        case 0x06:
-            // write data to active drive
-            enqueue_floppy_request(0x06);
-            length = data;
-            printf("Command: 0x06, length: %02x \r\n", length);
-            while (index < length) {
-                uart_buffer[index++] = uart_getc(UART_INTRA);
-            }
-            floppy_write_sector(uart_buffer);
-            break;
+        //case 0x06:
+        //    // write data to active drive
+        //    enqueue_floppy_request(0x06);
+        //    break;
         case 0x07:
             // read sector from active drive
             enqueue_floppy_request(0x07);
@@ -104,18 +105,16 @@ void check_floppy_queue() {
     uint8_t *buffer = malloc(0x80);
     if (floppy_queue_head != floppy_queue_tail) {
         int command = dequeue_floppy_request();
-        debug_printf("Command: %02x, length: 0x80 \r\n", command);
+        debug_printf("Command: 0x%02x, length: 0x80 \r\n", command);
 
-        // write sector
+        // read sector
         if (command == 0x07) {
             floppy_read_sector();
         }
-        // read sector
+        // write sector
         else if (command == 0x06) {
-            while (index < sector_length) {
-                buffer[index++] = uart_getc(UART_INTRA);
-            }
-            floppy_write_sector(buffer);
+            // read data from the host
+            floppy_write_sector(data_buffer);
         } else {
             debug_printf("Unknown command: %02x\r\n", command);
         }
@@ -188,10 +187,17 @@ static void floppy_write_sector(uint8_t *data) {
     gpio_put(LED_PIN, 1);
     FIL fil;
 
+    for (int i = 0; i < 0x80; i++) {
+        if (i % 16 == 0) {
+            debug_printf("\n");
+        }
+        debug_printf("%02x ", data[i]);
+    }
+
     mount_fs();
 
     debug_printf("opening file: %s\n", floppy_drives[active_drive].filename);
-    fs_res = f_open(&fil, floppy_drives[active_drive].filename, FA_OPEN_EXISTING | FA_WRITE);
+    fs_res = f_open(&fil, floppy_drives[active_drive].filename, FA_WRITE);
     if (fs_res != FR_OK) {
         debug_printf("f_open error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
@@ -203,16 +209,18 @@ static void floppy_write_sector(uint8_t *data) {
 
     // write data to the active drive at position determined by track and sector
     floppy_drives[active_drive].status = FLOPPY_BUSY;
-    fs_res = f_lseek(&floppy_drives[active_drive].file,
+    fs_res = f_lseek(&fil,
             (floppy_drives[active_drive].track - 1) * 0x1000 + floppy_drives[active_drive].sector * 0x80);
     if (fs_res != FR_OK) {
         debug_printf("f_lseek error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
         return;
     }
+    debug_printf("Writing sector %02x, track %02x\n",
+                 floppy_drives[active_drive].sector, floppy_drives[active_drive].track);
 
     uint bytes_written;
-    fs_res = f_write(&floppy_drives[active_drive].file, data, 0x80, &bytes_written);
+    fs_res = f_write(&fil, data, 0x80, &bytes_written);
     if (fs_res != FR_OK) {
         debug_printf("f_write error: %s (%d)\n", FRESULT_str(fs_res), fs_res);
         floppy_drives[active_drive].status = FLOPPY_ERROR;
@@ -224,6 +232,8 @@ static void floppy_write_sector(uint8_t *data) {
         return;
     }
     f_sync(&fil);
+
+    debug_printf("Wrote %d bytes to %s\n", bytes_written, floppy_drives[active_drive].filename);
 
     // send confirmation back to host
     send_confirmation(0x06, 0x00);

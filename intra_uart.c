@@ -28,8 +28,17 @@ void on_uart_intra_rx() {
             buffer[index++] = '\r';
             buffer[index++] = '\n';
             uart_write_blocking(UART_IO, buffer, index);
-        } else if (command >= 2 && command <= 7)
+        } else if (command == 6) { // write sector to floppy
+            length = uart_getc(UART_INTRA);
+
+            while (index < length) {
+                buffer[index++] = uart_getc(UART_INTRA);
+            }
+            process_floppy_write(buffer);
+
+        } else if ((command >= 2 && command <= 6) || command == 7) {
             process_floppy_command(command, uart_getc(UART_INTRA));
+        }
     }
 }
 
