@@ -16,17 +16,15 @@ void on_uart_intra_rx() {
     while (uart_is_readable(UART_INTRA)) {
         command = uart_getc(UART_INTRA);
 
-        // TODO: send correct header
         if (command == 0) {
+            debug_printf("Command: 0x00, length: %02x \r\n", length);
             length = uart_getc(UART_INTRA);
 
             while (index < length) {
                 buffer[index++] = uart_getc(UART_INTRA);
             }
-
-            debug_printf("Command: 0x00, length: %02x \r\n", length);
-            buffer[index++] = '\r';
-            buffer[index++] = '\n';
+            // TODO: make sure it doesn't cause any issues
+            // if it does, enqueue the request, and process it in the main loop
             uart_write_blocking(UART_IO, buffer, index);
         } else if (command == 6) { // write sector to floppy
             length = uart_getc(UART_INTRA);
@@ -36,12 +34,11 @@ void on_uart_intra_rx() {
             }
             process_floppy_write(buffer);
 
-        } else if ((command >= 2 && command <= 6) || command == 7) {
+        } else if ((command > 1 && command < 6) || command == 7) {
             process_floppy_command(command, uart_getc(UART_INTRA));
         }
     }
 }
-
 
 // send confirmation of a command
 void send_confirmation(uint8_t command, uint8_t status) {

@@ -56,10 +56,6 @@ void process_floppy_write(const uint8_t *data) {
 }
 
 void process_floppy_command(int command, uint8_t data) {
-    uint8_t uart_buffer[256];
-    uint8_t index = 0;
-    uint8_t length;
-
     switch (command) {
         case 0x02:
             // set active Drive
@@ -87,10 +83,6 @@ void process_floppy_command(int command, uint8_t data) {
                 send_confirmation(0x04, 1);
             }
             break;
-        //case 0x06:
-        //    // write data to active drive
-        //    enqueue_floppy_request(0x06);
-        //    break;
         case 0x07:
             // read sector from active drive
             enqueue_floppy_request(0x07);
