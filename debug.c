@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+// set to false to disable debug output
 #define  DEBUG_OUTPUT true
 
 void debug_printf(const char *format, ...) {
