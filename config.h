@@ -12,6 +12,7 @@
 
 #define UART_INTRA uart1              // intra-pi communication
 #define INTRA_BAUD_RATE 921600
+//#define INTRA_BAUD_RATE 115200
 #define UART_INTRA_TX_PIN 8
 #define UART_INTRA_RX_PIN 9
 

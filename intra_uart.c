@@ -17,8 +17,8 @@ void on_uart_intra_rx() {
         command = uart_getc(UART_INTRA);
 
         if (command == 0) {
-            debug_printf("Command: 0x00, length: %02x \r\n", length);
             length = uart_getc(UART_INTRA);
+            debug_printf("Command: 0x00, length: %02x \r\n", length);
 
             while (index < length) {
                 buffer[index++] = uart_getc(UART_INTRA);

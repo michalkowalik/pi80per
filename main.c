@@ -23,6 +23,10 @@ void on_uart_rx() {
     }
 }
 
+void dummy_handler() {
+    printf("Dummy handler\r\n");
+}
+
 
 int main() {
     stdio_init_all();
@@ -33,20 +37,15 @@ int main() {
     uart_init(UART_IO, BAUD_RATE);
     gpio_set_function(UART_IO_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_IO_RX_PIN, GPIO_FUNC_UART);
-
     irq_set_exclusive_handler(UART0_IRQ, on_uart_rx);
     irq_set_enabled(UART0_IRQ, true);
-
     uart_set_irq_enables(UART_IO, true, false);
 
     uart_init(UART_INTRA, INTRA_BAUD_RATE);
     gpio_set_function(UART_INTRA_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_INTRA_RX_PIN, GPIO_FUNC_UART);
-
     irq_set_exclusive_handler(UART1_IRQ, on_uart_intra_rx);
     irq_set_enabled(UART1_IRQ, true);
-
-    // for now -> for now it has no TX data!
     uart_set_irq_enables(UART_INTRA, true, false);
 
     sleep_ms(2000);
