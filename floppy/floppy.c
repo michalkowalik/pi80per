@@ -56,17 +56,17 @@ void process_floppy_write(const uint8_t *data) {
 }
 
 void process_floppy_command(int command, uint8_t data) {
+    printf("Floppy Command: 0x%02x, data: 0x%02x\r\n", command, data);
+    printf("Active drive: %d\r\n", active_drive);
     switch (command) {
         case 0x02:
             // set active Drive
-            printf("Command: 0x02, drive: %02x \r\n", data);
             active_drive = data;
             send_confirmation(0x02, 0x00);
             break;
         case 0x03:
             // set active sector on active drive
-            printf("Command: 0x03, sector: %02x \r\n", data);
-            if (data > 0 && data < 32) {
+            if (data >= 0 && data < 32) {
                 floppy_drives[active_drive].sector = data;
                 send_confirmation(0x03, 0x00);
             } else {
@@ -74,12 +74,14 @@ void process_floppy_command(int command, uint8_t data) {
             }
             break;
         case 0x04:
+            printf("Setting track to %02x\r\n", data);
             // set active track
-            printf("Command: 0x04, track: %02x \r\n", data);
             if (data >= 0 && data <= 31) {
+                printf("Setting track to %02x\r\n", data);
                 floppy_drives[active_drive].track = data;
                 send_confirmation(0x04, 0);
             } else {
+                printf("Invalid track: %02x\r\n", data);
                 send_confirmation(0x04, 1);
             }
             break;
@@ -93,8 +95,6 @@ void process_floppy_command(int command, uint8_t data) {
 }
 
 void check_floppy_queue() {
-    uint index = 0;
-    uint8_t *buffer = malloc(0x80);
     if (floppy_queue_head != floppy_queue_tail) {
         int command = dequeue_floppy_request();
         debug_printf("Command: 0x%02x, length: 0x80 \r\n", command);
@@ -111,7 +111,6 @@ void check_floppy_queue() {
             debug_printf("Unknown command: %02x\r\n", command);
         }
     }
-    free(buffer);
 }
 
 void mount_fs() {

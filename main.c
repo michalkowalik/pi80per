@@ -7,6 +7,7 @@
 #include "intra_uart.h"
 #include "debug.h"
 
+
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "EndlessLoop"
 
@@ -22,11 +23,6 @@ void on_uart_rx() {
         uart_write_blocking(UART_INTRA, uart_data, 2);
     }
 }
-
-void dummy_handler() {
-    printf("Dummy handler\r\n");
-}
-
 
 int main() {
     stdio_init_all();
@@ -56,6 +52,7 @@ int main() {
 
 
     while (true) {
+        print_uart_buffer();
         check_floppy_queue();
     }
 }
