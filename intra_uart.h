@@ -7,8 +7,12 @@
 
 #include "pico/stdlib.h"
 
-void on_uart_intra_rx();
+#define UART_BUFFER_SIZE 256
 
+extern uint8_t uart_buffer[UART_BUFFER_SIZE];
+
+void on_uart_intra_rx();
+void print_uart_buffer();
 void send_confirmation(uint8_t command, uint8_t status);
 void send_data(uint8_t command, uint8_t *data, uint8_t length);
 

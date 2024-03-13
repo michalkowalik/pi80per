@@ -24,9 +24,9 @@ https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing
 /* Configuration of RP2040 hardware SPI object */
 static spi_t spi = {  
     .hw_inst = spi0,  // RP2040 SPI component
-    .sck_gpio = 2,    // GPIO number (not Pico pin number)
-    .mosi_gpio = 3,
-    .miso_gpio = 4,
+    .sck_gpio = 18,    // GPIO number (not Pico pin number)
+    .mosi_gpio = 19,
+    .miso_gpio = 16,
     .set_drive_strength = true,
     .mosi_gpio_drive_strength = GPIO_DRIVE_STRENGTH_2MA,
     .sck_gpio_drive_strength = GPIO_DRIVE_STRENGTH_12MA,
@@ -39,7 +39,7 @@ static spi_t spi = {
 /* SPI Interface */
 static sd_spi_if_t spi_if = {
     .spi = &spi,  // Pointer to the SPI driving this card
-    .ss_gpio = 7,      // The SPI slave select GPIO for this SD card
+    .ss_gpio = 17,      // The SPI slave select GPIO for this SD card
     .set_drive_strength = true,
     .ss_gpio_drive_strength = GPIO_DRIVE_STRENGTH_2MA
 

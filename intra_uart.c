@@ -7,6 +7,21 @@
 #include "floppy/floppy.h"
 #include "debug.h"
 
+#define UART_BUFFER_SIZE 256
+
+uint8_t uart_buffer[UART_BUFFER_SIZE];
+uint8_t uart_read_index = 0;
+uint8_t uart_write_index = 0;
+
+void print_uart_buffer() {
+    if (uart_read_index != uart_write_index) {
+        while (uart_read_index != uart_write_index) {
+            uart_putc(UART_IO, uart_buffer[uart_read_index]);
+            uart_read_index = (uart_read_index + 1) % UART_BUFFER_SIZE;
+        }
+    }
+}
+
 void on_uart_intra_rx() {
     int command;
     int length;
@@ -17,15 +32,13 @@ void on_uart_intra_rx() {
         command = uart_getc(UART_INTRA);
 
         if (command == 0) {
-            debug_printf("Command: 0x00, length: %02x \r\n", length);
             length = uart_getc(UART_INTRA);
+//            debug_printf("Command: 0x00, length: %02x \r\n", length);
 
             while (index < length) {
-                buffer[index++] = uart_getc(UART_INTRA);
+                uart_buffer[uart_write_index++] = uart_getc(UART_INTRA);
+                index++;
             }
-            // TODO: make sure it doesn't cause any issues
-            // if it does, enqueue the request, and process it in the main loop
-            uart_write_blocking(UART_IO, buffer, index);
         } else if (command == 6) { // write sector to floppy
             length = uart_getc(UART_INTRA);
 
@@ -42,6 +55,7 @@ void on_uart_intra_rx() {
 
 // send confirmation of a command
 void send_confirmation(uint8_t command, uint8_t status) {
+    printf("Sending confirmation: %02x %02x\r\n", command, status);
     uint8_t uart_data[] = {command, status};
     uart_write_blocking(UART_INTRA, uart_data, 2);
 }
