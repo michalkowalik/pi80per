@@ -66,7 +66,7 @@ void process_floppy_command(int command, uint8_t data) {
             break;
         case 0x03:
             // set active sector on active drive
-            if (data >= 0 && data < 32) {
+            if (data > 0 && data <= 32) {
                 floppy_drives[active_drive].sector = data;
                 send_confirmation(0x03, 0x00);
             } else {
@@ -74,7 +74,6 @@ void process_floppy_command(int command, uint8_t data) {
             }
             break;
         case 0x04:
-            printf("Setting track to %02x\r\n", data);
             // set active track
             if (data >= 0 && data <= 31) {
                 printf("Setting track to %02x\r\n", data);
